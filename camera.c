@@ -440,12 +440,12 @@ static bool find_blob_for_target(const char *targetcolor, int *out_x, int *out_y
                     bool shape_match = false;
 
                     if (requires_circularity) {
-                        shape_match = aspect_ratio < 2.3f && solidity > 0.70f;
+                        shape_match = aspect_ratio < 2.3f && solidity > 0.52f;
                     } else {
                         shape_match = aspect_ratio < 4.0f && solidity > 0.35f;
                     }
                    
-                    printf("[DEBUG] Blob: %d area=%d, bbox=%dx%d, aspect=%.2f, solidity=%.2f\r\n",blob_hue, area, bbox_width, bbox_height, aspect_ratio, solidity);
+                    // printf("[DEBUG] Blob: %d area=%d, bbox=%dx%d, aspect=%.2f, solidity=%.2f\r\n",blob_hue, area, bbox_width, bbox_height, aspect_ratio, solidity);
                     if (shape_match && area > best_area) {
                         best_area = area;
                         best_cx = sum_x / area;
@@ -466,7 +466,7 @@ static bool find_blob_for_target(const char *targetcolor, int *out_x, int *out_y
             }
         }
     }
-    if (best_area > 0) {
+    if (best_area > 0 && best_roundness > 0.52f) {
         if (out_x != NULL) {
             *out_x = best_cx;
         }

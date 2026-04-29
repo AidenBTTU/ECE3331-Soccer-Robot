@@ -9,6 +9,14 @@ bool compass_init(Compass *compass, i2c_inst_t *i2c, float declination_degrees) 
     return mpu9250_init(&compass->sensor, i2c);
 }
 
+bool compass_calibrate(Compass *compass, ak8963_vector_t *offset, ak8963_vector_t *scale) {
+    return ak8963_calibrate(&compass->sensor.ak8963, 256, 200, offset, scale);
+}
+
+bool compass_get_magnetic(Compass *compass, ak8963_vector_t *magnetic) {
+    return mpu9250_get_magnetic(&compass->sensor, magnetic);
+}
+
 float compass_low_pass_filter(float previous, float value) {
     return 0.85f * previous + 0.15f * value;
 }
