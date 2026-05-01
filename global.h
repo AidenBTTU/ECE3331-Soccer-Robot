@@ -29,5 +29,6 @@
 #include "servo.h"
 
 void sleepcheck(int x);
+float normalize_heading(float relative);
 
 #endif

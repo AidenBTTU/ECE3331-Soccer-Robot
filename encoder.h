@@ -16,6 +16,7 @@ typedef struct {
 void encoder_init(Encoder *encoder, unsigned int pin_a, unsigned int pin_b);
 int32_t encoder_get_count(const Encoder *encoder);
 int32_t encoder_delta(Encoder *encoder);
+int32_t encoder_delta_cm(Encoder *encoder);
 void encoder_reset(Encoder *encoder);
 
 #endif

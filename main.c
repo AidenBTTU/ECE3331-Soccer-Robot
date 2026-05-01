@@ -36,8 +36,8 @@
 #define sorter_PIN 0
 #define BEAM_SENSOR_PIN 13
 #define BEAM_BROKEN_STATE 0
-#define GREENFLYWHEEL 16
-#define REDFLYWHEEL 17
+#define GREENFLYWHEEL 17
+#define REDFLYWHEEL 16
 
 
 
@@ -161,7 +161,7 @@ void dist_callback(uint gpio, uint32_t events) {
         if (gpio == DIST_ECHO_PIN) {
             left_distance_cm = distance;
             pulse_start_left = 0;
-            printf("Left distance: %d cm\n", left_distance_cm);
+            //printf("Left distance: %d cm\n", left_distance_cm);
             if (distance < 15) {
                 L_collision_count++;
                 if(L_collision_count >= 3) {
@@ -174,7 +174,7 @@ void dist_callback(uint gpio, uint32_t events) {
         } else {
             right_distance_cm = distance;
             pulse_start_right = 0;
-            printf("Right distance: %d cm\n", right_distance_cm);
+            //printf("Right distance: %d cm\n", right_distance_cm);
             if (distance < 15) {
                 if(R_collision_count >= 3) {
                     COLLISION = true;
@@ -376,10 +376,28 @@ static bool is_ball(const char *label) {
 //     uint32_t now_ms = to_ms_since_boot(get_absolute_time());
 //     return (now_ms - search_start_ms) >= EXTRA_SEARCH_TIMEOUT_MS;
 // }
+float normalize_heading(float h) {
+    while (h > 180.0f) h -= 360.0f;
+    while (h < -180.0f) h += 360.0f;
+    return h;
+}
 
+float heading0 = 0.0f;
+void compass_init_reference(Compass *compass) {
+        float initial_heading;
 
+        compass_read_heading(compass, &initial_heading, NULL);
+        heading0 = initial_heading;
+    }
+float compass_get_relative_heading(Compass *compass) {
+    float heading;
 
+    compass_read_heading(compass, &heading, NULL);
 
+    float relative = heading - heading0;
+
+    return normalize_heading(relative);
+}
 
 
 void initalizeEverything() {
@@ -401,7 +419,7 @@ void initalizeEverything() {
         150
     );
     motor_noencoder_stop_all(&motor);
-    sleepcheck(3000);
+    sleep_ms(3000);
 
 
     // ENCODER INIT
@@ -463,47 +481,62 @@ void initalizeEverything() {
     servo_init(&sorter, sorter_PIN);
     servo_move(&scoop, 0.0f);
     servo_move(&sorter, 0.0f);
-
-
+    sleep_ms(5000);
     // COMPASS / MAGNETOMETER INIT (commented out for now)
+
+    ak8963_vector_t COMPASS_OFFSET = {
+        .x = 30.335f,
+        .y = 1.235f,
+        .z = -18.330f
+    };
+
+    ak8963_vector_t COMPASS_SCALE = {
+        .x = 1.215f,
+        .y = 0.895f,
+        .z = 0.944f
+    };
     const float lubbock_declination_deg = -5.44f;
+
     bool compass_ok = compass_init(&compass, COLOR_I2C_PORT, lubbock_declination_deg);
-    if (compass_ok) {
-        float raw_h = 0.0f;
-        // Warm up the low-pass filter with a few reads before storing the reference
-        for (int i = 0; i < 10; i++) {
-            compass_read_heading(&compass, &raw_h, NULL);
-            sleep_ms(20);
-        }
-        if (compass_read_heading(&compass, &enemy_goal_heading, NULL)) {
-            printf("Enemy goal heading stored: %.1f deg\n", enemy_goal_heading);
-        }
-    } else {
-        printf("Compass init failed\n");
+    if (compass_apply_calibration(&compass, COMPASS_OFFSET, COMPASS_SCALE)) {
+        printf("Calibration applied");
+        sleep_ms(200);
     }
+    
+    if(!compass_ok) {
+        printf("Compass init failed\n");
+        sleep_ms(10000);
+    }
+    compass_init_reference(&compass);
+    
 
-
+    
+    
     // NOTE: Distance sensor triggers need regular pulses to work
     // Ensure hcsr04_send_pulse_and_wait() is called periodically in main loop
    
     // CAMERA INIT
     printf("Starting...\n");
-    sleepcheck(1000);
+    sleep_ms(1000);
 
 
     init_cam();  // configure camera registers
     printf("Cam init done\n");
     printf("Camera initialized...\n");
-
+    sleep_ms(5000);
 
     // FLYWHEEL INIT
     gpio_init(GREENFLYWHEEL);
     gpio_set_dir(GREENFLYWHEEL, GPIO_OUT);
     gpio_init(REDFLYWHEEL);
     gpio_set_dir(REDFLYWHEEL, GPIO_OUT);
+    gpio_put(GREENFLYWHEEL, 1);
+    gpio_put(REDFLYWHEEL, 1);
+    printf("made it out of Flywheel setting");
 
 
     add_repeating_timer_ms(-100, timer_callback, NULL, &timer);
+    printf("Timer initialized\n");
 }
 void collisionDetected() {
     if(COLLISION_PIN == DIST_ECHO_PIN) {
@@ -763,28 +796,54 @@ void state_deposit(void) { // SCORE red or green
 //     current_state = state_capture;
 // }
 
-
+float raw_heading = 0.0f;
 int main() {
     // Initialize hardware
     initalizeEverything();
+    printf("Hardware initialized\n");
+    
     // Initialize state machine
-    current_state = state_capture;
-
+    // current_state = state_capture;
+    while (true) {
+        
+        raw_heading = compass_get_relative_heading(&compass);
+        printf("Raw heading: %.1f\n", raw_heading);
+        motor_noencoder_move(&motor, .5, true, true);
+        sleep_ms(500);
+        motor_noencoder_stop_all(&motor);
+        sleep_ms(500);
+        encoder_delta_cm(&left_enc);
+        encoder_delta_cm(&right_enc);
+        printf("Encoder delta: %d cm\n", encoder_delta_cm(&left_enc));
+        printf("Encoder delta: %d cm\n", encoder_delta_cm(&right_enc));
+    }
 
     // Main loop
     while (true) {
         //run the current state
-        current_state();
-        // Check for reboot button
         if (!gpio_get(REBOOT_BUTTON)) {
             printf("Rebooting to bootloader...\n");
-            sleepcheck(500);
+            sleep_ms(500);
             reset_usb_boot(0, 0);
         }
+        current_state();
+        // printf("yeah we looped");
+        // gpio_put(GREENFLYWHEEL, 0);
+        // sleep_ms(3000);
+        // gpio_put(GREENFLYWHEEL, 1);
+        // sleep_ms(3000);
+        // printf("made it through ");
+        // motor_noencoder_move(&motor, .3, true, true);
+        // sleep_ms(500);
+        // motor_noencoder_stop_all(&motor);
+        // int change = encoder_delta(&left_enc);
+        // printf("Encoder change: %d\n", change);
+        // // Check for reboot button
+        
 
 
-        printf("working..\r\n");
-        sleepcheck(100);
+        // sleep_ms(100);
+        // printf("okay we are going to the next loop now please");
     }
 
 
